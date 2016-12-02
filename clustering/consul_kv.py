@@ -180,7 +180,7 @@ def get_value(module):
                          value=data['Value'],
                          data=data)
     except Exception as e:
-        module.exit_json(msg="Key does not exist %s" % e)
+        module.fail_json(msg="Consul key does not exist. %s" % e)
 
 def lock(module, state):
 
