@@ -199,11 +199,16 @@ def lock(module, state):
 
     changed = not existing or (existing and existing['Value'] != value)
     if changed and not module.check_mode:
-        changed = consul_api.kv.put(key, value,
-                                    cas=module.params.get('cas'),
-                                    release=session,
-                                    flags=module.params.get('flags'))
-
+        if state == 'acquire':
+            changed = consul_api.kv.put(key, value,
+                                        cas=module.params.get('cas'),
+                                        acquire=session,
+                                        flags=module.params.get('flags'))
+        else:
+            changed = consul_api.kv.put(key, value,
+                                        cas=module.params.get('cas'),
+                                        release=session,
+                                        flags=module.params.get('flags'))
     module.exit_json(changed=changed,
                      index=index,
                      key=key)
