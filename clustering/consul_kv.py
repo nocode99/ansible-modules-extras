@@ -45,9 +45,9 @@ options:
             lock associated with a key/value pair with the states 'acquire' or
             'release' respectively. a valid session must be supplied to make the
             attempt changed will be true if the attempt is successful, false
-            otherwise.
+            otherwise. 'obtain' will return the value of the key if it exists.
         required: false
-        choices: ['present', 'absent', 'acquire', 'release']
+        choices: ['present', 'absent', 'obtain', 'acquire', 'release']
         default: present
     key:
         description:
@@ -137,6 +137,11 @@ EXAMPLES = '''
       value: 20160509
       session: "{{ sessionid }}"
       state: acquire
+
+  - name: Obtain the value from a key if it exists
+    consul_kv:
+      key: foo
+      state: obtain
 '''
 
 import sys
@@ -154,6 +159,8 @@ def execute(module):
 
     state = module.params.get('state')
 
+    if state == 'obtain':
+        get_value(module)
     if state == 'acquire' or state == 'release':
         lock(module, state)
     if state == 'present':
@@ -161,6 +168,19 @@ def execute(module):
     else:
         remove_value(module)
 
+
+def get_value(module):
+    consul_api = get_consul_api(module)
+    key = module.params.get('key')
+    changed = False
+    try:
+        index, data = consul_api.kv.get(key)
+        module.exit_json(index=index,
+                         key=key,
+                         value=data['Value'],
+                         data=data)
+    except Exception as e:
+        module.exit_json(msg="Key does not exist %s" % e)
 
 def lock(module, state):
 
@@ -179,16 +199,10 @@ def lock(module, state):
 
     changed = not existing or (existing and existing['Value'] != value)
     if changed and not module.check_mode:
-        if state == 'acquire':
-            changed = consul_api.kv.put(key, value,
-                                        cas=module.params.get('cas'),
-                                        acquire=session,
-                                        flags=module.params.get('flags'))
-        else:
-            changed = consul_api.kv.put(key, value,
-                                        cas=module.params.get('cas'),
-                                        release=session,
-                                        flags=module.params.get('flags'))
+        changed = consul_api.kv.put(key, value,
+                                    cas=module.params.get('cas'),
+                                    release=session,
+                                    flags=module.params.get('flags'))
 
     module.exit_json(changed=changed,
                      index=index,
@@ -217,7 +231,6 @@ def add_value(module):
                      index=index,
                      key=key,
                      data=stored)
-
 
 def remove_value(module):
     ''' remove the value associated with the given key. if the recurse parameter
@@ -264,7 +277,7 @@ def main():
         port=dict(default=8500, type='int'),
         recurse=dict(required=False, type='bool'),
         retrieve=dict(required=False, type='bool', default=True),
-        state=dict(default='present', choices=['present', 'absent', 'acquire', 'release']),
+        state=dict(default='present', choices=['present', 'absent', 'acquire', 'release', 'obtain']),
         token=dict(required=False, no_log=True),
         value=dict(required=False),
         session=dict(required=False)
